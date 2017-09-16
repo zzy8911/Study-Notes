@@ -1,0 +1,29 @@
+// 
+rc.sensors
+	sensors start
+
+sensors_main
+	return Sensors::main(argc, argv);
+		return start_command_base(argc - 1, argv + 1);
+			ret = T::task_spawn(argc, argv);
+				px4_task_spawn_cmd("sensors",
+				      SCHED_DEFAULT,
+				      SCHED_PRIORITY_SENSOR_HUB,
+				      2000,
+				      (px4_main_t)&run_trampoline,
+				      (char *const *)argv);
+				run_trampoline
+					_object = T::instantiate(argc, argv);
+						return new Sensors(hil_enabled);;
+					object->run();
+						while (!should_exit()) {
+							poll_fds.fd = _voted_sensors_update.best_gyro_fd();
+							px4_poll(&poll_fds, 1, 50);
+						}
+
+
+
+
+firmware\src\modules\commander\accelerometer_calibration.cpp
+do_accel_calibration
+

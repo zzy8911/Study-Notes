@@ -1,0 +1,57 @@
+// firmware\src\drivers\boards\px4fmu-v2\board_config.h
+板级配置文件
+
+// rc.sensors：sensor启动脚本
+mpu6000 start
+
+// 框架
+firmware\src\drivers\mpu6000\mpu6000.cpp			// 芯片相关，接口无关，平台无关
+// 中间件
+firmware\src\drivers\mpu6000\mpu6000_spi.cpp		// 芯片相关，接口相关，平台无关（定义了接口）
+// 底层
+firmware\src\drivers\device\spi.cpp					// 底层函数的封装，平台无关
+firmware\nuttx\nuttx\arch\arm\src\stm32\stm32_spi.c	// 最底层的驱动函数，平台相关
+
+bus_options[] = {
+	{ MPU6000_BUS_SPI_INTERNAL1, MPU_DEVICE_TYPE_MPU6000, MPU_DEVICE_PATH_ACCEL, MPU_DEVICE_PATH_GYRO, &MPU6000_SPI_interface, PX4_SPI_BUS_SENSORS,  false, NULL },		// OK busnum=PX4_SPI_BUS_SENSORS=1
+	{ MPU6000_BUS_SPI_EXTERNAL1, MPU_DEVICE_TYPE_MPU6000, MPU_DEVICE_PATH_ACCEL_EXT, MPU_DEVICE_PATH_GYRO_EXT, &MPU6000_SPI_interface, PX4_SPI_BUS_EXT,  true, NULL },	// probe失败
+}
+// firmware\src\drivers\mpu6000\mpu6000.cpp：对应的上层应用code
+if (!strcmp(verb, "start"))
+	mpu6000::start(busid, rotation, accel_range, device_type);	// MPU6000_BUS_ALL, MPU_DEVICE_TYPE_MPU6000
+		for (unsigned i = 0; i < NUM_BUS_OPTIONS; i++)
+			started |= start_bus(bus_options[i], rotation, range, device_type);
+				// get interface
+				device::Device *interface = bus.interface_constructor(bus.busnum, device_type, bus.external);	// MPU6000_SPI_interface: 通讯的总线接口
+					interface = new MPU6000_SPI(bus, (spi_dev_e) cs, device_type);	// bus = PX4_SPI_BUS_SENSORS = 1							
+				interface->init();	// MPU6000_SPI::init()
+					ret = SPI::init();
+						_dev = px4_spibus_initialize(_bus);	// _bus == 1, _dev == g_spi1dev
+							return g_spi1dev;						
+				// create
+				bus.dev = new MPU6000(interface, bus.accelpath, bus.gyropath, rotation, device_type);
+				// init
+				bus.dev->init(); // MPU6000::init()
+					// probe: config中同时配置了内部和外部mpu6000，因为外部的没有挂载，所以只有【内部的mpu6000】才会probe成功
+					int ret = probe();
+					// register
+					ret = _gyro->init();
+						_gyro_class_instance = register_class_devname(GYRO_BASE_DEVICE_PATH);	// /dev/accel	
+					_accel_class_instance = register_class_devname(ACCEL_BASE_DEVICE_PATH);		// /dev/gyro
+					// measure
+					measure();
+					// orb part
+					_accel_topic = orb_advertise_multi(ORB_ID(sensor_accel), &arp, &_accel_orb_class_instance, (is_external()) ? ORB_PRIO_MAX : ORB_PRIO_HIGH);
+					_gyro->_gyro_topic = orb_advertise_multi(ORB_ID(sensor_gyro), &grp, &_gyro->_gyro_orb_class_instance, (is_external()) ? ORB_PRIO_MAX : ORB_PRIO_HIGH);
+				// 
+				fd = open(bus.accelpath, O_RDONLY);	// /dev/mpu6000_accel
+				ioctl(fd, SENSORIOCSPOLLRATE, SENSOR_POLLRATE_DEFAULT);
+				ioctl(fd, ACCELIOCSRANGE, range);
+					return set_accel_range(arg);
+						write_checked_reg(MPUREG_ACCEL_CONFIG, afs_sel << 3);
+							write_reg(reg, value);
+								return _interface->write(MPU6000_LOW_SPEED_OP(reg), &value, 1);	// MPU6000_SPI::write
+									return transfer(&cmd[0], &cmd[0], count + 1);	// SPI::transfer
+										result = _transfer(send, recv, len);
+											SPI_EXCHANGE(_dev, send, recv, len);	// #define SPI_EXCHANGE(d,t,r,l) ((d)->ops->exchange(d,t,r,l)) == spi_exchange 最底层的spi发送函数
+				close(fd);
