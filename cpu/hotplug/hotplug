@@ -1,0 +1,3 @@
+/* cpu hotplug */
+echo 0 > /sys/devices/system/cpu/cpux/online      # 关闭CPUx
+echo 1 > /sys/devices/system/cpu/cpux/online      # 打开CPUx

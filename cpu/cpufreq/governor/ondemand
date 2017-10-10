@@ -1,0 +1,51 @@
+/*
+ * drivers\cpufreq\cpufreq_governor.c: 框架API
+ * drivers\cpufreq\cpufreq_ondemand.c: 具体
+ * 
+ */
+
+/* cpufreq_ondemand.c
+ * 全局链表 cpufreq_governor_list
+ */
+static struct dbs_governor od_dbs_gov = {
+	.gov = CPUFREQ_DBS_GOVERNOR_INITIALIZER("ondemand"),
+	.gov_dbs_update = od_dbs_update,	// FIXME
+};
+
+#define CPU_FREQ_GOV_ONDEMAND	(&od_dbs_gov.gov)
+
+module_init(cpufreq_gov_dbs_init);
+	// cpufreq_register_governor: 只是将该governor挂载到cpufreq_governor_list全局链表中
+	cpufreq_register_governor(CPU_FREQ_GOV_ONDEMAND);
+		list_add(&governor->governor_list, &cpufreq_governor_list);
+
+
+// will call governor->init func
+cpufreq_init_governor
+	policy->governor->init(policy);
+
+
+/*
+ * FIXME: policy和governor的关系
+ */
+
+
+// init
+#define CPUFREQ_DBS_GOVERNOR_INITIALIZER(_name_)			\
+	{								\
+		.name = _name_,						\
+		.init = cpufreq_dbs_governor_init,			\
+	}
+cpufreq_dbs_governor_init
+	alloc_policy_dbs_info
+		INIT_WORK(&policy_dbs->work, dbs_work_handler);	// 初始化工作队列
+
+// callback
+dbs_work_handler
+	gov_update_sample_delay(policy_dbs, gov->gov_dbs_update(policy));
+
+
+
+
+
+
