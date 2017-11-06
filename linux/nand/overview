@@ -1,0 +1,14 @@
+/*
+ * 分为两部分
+ * part 1: linux-4.13.1\drivers\mtd\nand\Nand_samsung.c: nand driver, nand这颗料本身，获取pagesize/blocksize/oob size...
+ * part 2: linux-4.13.1\drivers\mtd\nand\S3c2410.c: nand controller driver, 控制器的驱动, 填充nand_chip结构体，调用nand_scan
+ * 通过nand_ids.c这个表将两者链接起来
+ */
+
+/*
+ * 256M nand: 
+ *	mtd->writesize:2*1024, mtd->oobsize:64, mtd->erasesize:128*1024
+ *	bbt_erase_shift:17(128KB), page_shift:11(2KB)
+ */
+ 
+可以按字节读写，但是只能按block擦除
