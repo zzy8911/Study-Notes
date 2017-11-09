@@ -1,0 +1,66 @@
+/*
+ * input device
+ */
+s3c2410ts_probe
+	// allocate
+	input_dev = input_allocate_device();
+	// set
+	ts.input = input_dev;
+	// 注册为kbd device必须同时设置evbit和keybit
+	ts.input->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
+	ts.input->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
+	input_set_abs_params(ts.input, ABS_X, 0, 0x3FF, 0, 0);
+	input_set_abs_params(ts.input, ABS_Y, 0, 0x3FF, 0, 0);
+	// register：register成功后会挂接两个handler：evdev/kbd
+	ret = input_register_device(ts.input);
+
+
+input_set_abs_params(ts.input, ABS_X, 0, 0x3FF, 0, 0);
+	input_alloc_absinfo(dev);
+	absinfo = &dev->absinfo[axis];	// absinfo = input_dev->absinfo[ABS_X]
+	absinfo->minimum = min;
+	absinfo->maximum = max;
+	__set_bit(EV_ABS, dev->evbit);
+	__set_bit(axis, dev->absbit);
+
+/*
+ * register device，就是match input_handler_list，然后connect
+ */
+int input_register_device(struct input_dev *dev)
+	list_for_each_entry(handler, &input_handler_list, node)	// FIXME: input_handler_list
+		input_attach_handler(dev, handler);
+			// 成功找到才进行connect
+			input_match_device(handler, dev);
+				if (!handler->match || handler->match(handler, dev))
+					return id;
+			handler->connect(handler, dev, id);
+
+/*
+ * 对input_dev上所有可用的handler都调用handler->events/handler->event进行数据上报
+ */
+input_report_abs(ts.input, ABS_X, ts.xp);	// code: ABS_X, value: ts.xp
+	input_event(dev, EV_ABS, code, value);
+		input_handle_event(dev, type, code, value);
+			int disposition = input_get_disposition(dev, type, code, &value);	// type:EV_ABS, code:ABS_X
+				disposition = input_handle_abs_event(dev, code, &value);	// INPUT_PASS_TO_HANDLERS
+			// set
+			v = &dev->vals[dev->num_vals++];
+			v->type = type;
+			v->code = code;
+			v->value = value;
+			dev->vals[dev->num_vals++] = input_value_sync;
+			// report
+			input_pass_values(dev, dev->vals, dev->num_vals);
+				list_for_each_entry_rcu(handle, &dev->h_list, d_node)	// 遍历input_dev所有的handle
+					if (handle->open)	// 只有需要的时候才会处理
+						input_to_handler(handle, vals, count);
+							struct input_handler *handler = handle->handler;	// 由handle找到handler
+							/*
+							 * handler有events则调用，没有则for调用event
+							 */
+							if (handler->events)
+								handler->events(handle, vals, count);
+							else if (handler->event)
+								for (v = vals; v != vals + count; v++)
+									handler->event(handle, v->type, v->code, v->value);
+

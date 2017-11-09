@@ -1,0 +1,100 @@
+/*
+ * evdev.c: 这个是生成/dev/inputx节点使用，所以必然会match到
+ */
+
+int input_register_handler(struct input_handler *handler)
+	list_add_tail(&handler->node, &input_handler_list);	// input_handler_list
+
+// Evdev.c (linux-4.13.1\drivers\input)
+static struct input_handler evdev_handler = {
+	// 没有实现match则match every input_device
+	.event		= evdev_event,	// input_device调用input_report_xxx将会callback此类函数
+	.events		= evdev_events,
+	.connect	= evdev_connect,// 主要是生成/dev/input/eventx节点
+	.id_table	= evdev_ids,	// match everything
+};
+static const struct file_operations evdev_fops = {
+	.open		= evdev_open,
+	.read		= evdev_read,
+	.write		= evdev_write,
+};
+
+/*
+ * handle->open只在上层open /dev/eventx时才置位
+ * 既 只有上层open后才能上报事件
+ */
+evdev_open(struct inode *inode, struct file *file)
+	evdev_attach_client(evdev, client);
+		list_add_tail_rcu(&client->node, &evdev->client_list);
+	evdev_open_device(evdev);
+		input_open_device(&evdev->handle);
+			handle->open++;	// FIXME
+
+/*
+ * input_report_xxx将会callback
+ * 将event数据保存在client->buffer[]中
+ */
+evdev_events(struct input_handle *handle, const struct input_value *vals, unsigned int count)
+	list_for_each_entry_rcu(client, &evdev->client_list, node)
+		evdev_pass_values(client, vals, count, ev_time);
+		for (v = vals; v != vals + count; v++) {
+			event.type = v->type;
+			event.code = v->code;
+			event.value = v->value;
+			__pass_event(client, &event);
+				client->buffer[client->head++] = *event;
+		}
+
+/*
+ * 上层调用read()将会callback
+ * 将client->buffer[]中的数据copy_to_user到用户空间
+ */
+evdev_read
+	for (;;) {
+
+		while (read + input_event_size() <= count && evdev_fetch_next_event(client, &event)) {
+			// evdev_fetch_next_event
+			*event = client->buffer[client->tail++];	// 得到client->buffer[]
+					
+			input_event_to_user(buffer + read, &event);
+				copy_to_user(buffer, event, sizeof(struct input_event));
+				
+			read += input_event_size();
+		}
+	}
+
+evdev_init
+	return input_register_handler(&evdev_handler);
+		// 挂接到input_handler_list
+		list_add_tail(&handler->node, &input_handler_list);
+		/*
+		 * handler->match input_register_device的所有devices，match成功则调用handler->connect
+		 * input_dev_list和input_handler_list之间进行相互match
+		 */
+		list_for_each_entry(dev, &input_dev_list, node)
+			input_attach_handler(dev, handler);
+				// evdev这个handler匹配任意device
+				id = input_match_device(handler, dev);
+					for (id = handler->id_table; id->flags || id->driver_info; id++) {	// .driver_info = 1
+						if (!handler->match || handler->match(handler, dev))	// .match = NULL
+							return id;
+					}
+				// call handler->connect
+				handler->connect(handler, dev, id);	// evdev_connect
+					// 注册/dev/eventx节点
+					minor = input_get_new_minor(EVDEV_MINOR_BASE, EVDEV_MINORS, true);
+					dev_no = minor;
+					dev_set_name(&evdev->dev, "event%d", dev_no);	// 只要显示eventx的就是evdev handler在处理，并且base是64
+					evdev->dev.devt = MKDEV(INPUT_MAJOR, minor);	// 主设备号13
+					cdev_init(&evdev->cdev, &evdev_fops);
+					error = cdev_device_add(&evdev->cdev, &evdev->dev);
+					// 注册handle
+					evdev->handle.dev = input_get_device(dev);
+					evdev->handle.name = dev_name(&evdev->dev);
+					evdev->handle.handler = handler;
+					evdev->handle.private = evdev;
+					input_register_handle(&evdev->handle);
+						list_add_tail_rcu(&handle->d_node, &dev->h_list);	// 添加到input_dev->h_list
+						list_add_tail_rcu(&handle->h_node, &handler->h_list);
+
+

@@ -1,0 +1,32 @@
+/*
+ * handle->open在input_register_handler即置位
+ */
+kbd_init
+	input_register_handler(&kbd_handler);
+		/*
+		 * 遍历所有的input_dev_list，先调用handler->match进行匹配，成功则调用handler->connect进行input_device和input_handler连接
+		 */
+		list_for_each_entry(dev, &input_dev_list, node)	// for ()
+			input_attach_handler(dev, handler);
+				// match，符合handler的rule才能match成功
+				id = input_match_device(handler, dev);
+					for (id = handler->id_table; id->flags || id->driver_info; id++) {
+						if (!handler->match || handler->match(handler, dev))
+							// kbd_match
+								if (test_bit(EV_KEY, dev->evbit)) {		// check evbit
+									for (i = KEY_RESERVED; i < BTN_MISC; i++)
+										if (test_bit(i, dev->keybit))	// check keybit
+											return true;
+									for (i = KEY_BRL_DOT1; i <= KEY_BRL_DOT10; i++)
+										if (test_bit(i, dev->keybit))
+											return true;
+								}
+							return id;
+					}
+				// match success, start connect
+				handler->connect(handler, dev, id);	// kbd_connect
+					// 注册handle
+					input_register_handle(handle);
+					// 
+					input_open_device(handle);
+						handle->open++;
