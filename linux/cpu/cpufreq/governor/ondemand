@@ -1,0 +1,109 @@
+/*
+ * drivers\cpufreq\cpufreq_governor.c: 框架API
+ * drivers\cpufreq\cpufreq_ondemand.c: 具体
+ */
+
+/* 
+ * part 1: cpufreq_ondemand.c
+ * 填充dbs governor结构体，主要时实现gov_dbs_update
+ * 根据以下两个公式来计算合适的频率
+ * load = 100 * (time_elapsed - idle_time) / time_elapsed;
+ * freq_next = min_f + load * (max_f - min_f) / 100;
+ */
+static struct dbs_governor od_dbs_gov = {
+	.gov = CPUFREQ_DBS_GOVERNOR_INITIALIZER("ondemand"),
+	.gov_dbs_update = od_dbs_update,	// FIXME：实现策略
+	.init = od_init,	// 回填dbs_data用: 设置参数，不同governor的个性化部分
+};
+// 设置参数
+od_init
+	dbs_data->up_threshold = MICRO_FREQUENCY_UP_THRESHOLD;	// 95%, 设置一个截止点，>up_threshold，则满频工作
+	dbs_data->min_sampling_rate = MICRO_FREQUENCY_MIN_SAMPLE_RATE;	// 10ms，设置采样率
+	dbs_data->io_is_busy = should_io_be_busy();	// 0, 是否需要统计iowait时间
+// 采样时间内统计cpu负载并且设置合适频率
+od_dbs_update
+	od_update(policy);
+		// 计算load
+		load = dbs_update(policy);	// load对应cpu负载的百分比
+			/*
+			 * 统计查询时间段内idle_time的占比
+			 * 100 * (time_elapsed - idle_time) / time_elapsed;
+			 */
+			cur_idle_time = get_cpu_idle_time(j, &update_time, io_busy);
+			// time_elapsed
+			time_elapsed = update_time - j_cdbs->prev_update_time;
+			j_cdbs->prev_update_time = update_time;
+			// idle_time
+			idle_time = cur_idle_time - j_cdbs->prev_cpu_idle;
+			j_cdbs->prev_cpu_idle = cur_idle_time;
+			// cal load
+			load = 100 * (time_elapsed - idle_time) / time_elapsed;
+		// 执行不同的策略
+		if (load > dbs_data->up_threshold) {
+			// >up_threshold, 直接满频
+			dbs_freq_increase(policy, policy->max);
+				__cpufreq_driver_target(policy, freq, od_tuners->powersave_bias ?
+						CPUFREQ_RELATION_L : CPUFREQ_RELATION_H);
+		} else {
+			/* 
+			 * 根据cpu的load设置相应频率
+			 */
+			freq_next = min_f + load * (max_f - min_f) / 100;
+			__cpufreq_driver_target(policy, freq_next, CPUFREQ_RELATION_C);
+		}
+
+
+/*
+ * part 2: cpufreq_governor.c
+ * 将ondemand conservative...共有的部分抽象出来
+ */
+#define CPUFREQ_DBS_GOVERNOR_INITIALIZER(_name_)			\
+	{								\
+		.name = _name_,						\
+		.init = cpufreq_dbs_governor_init,			\
+	}
+
+/*
+ * dbs_governor将governor再封装了一层: dbs_governor.governor
+ * 将会调用dbs_governor->init：设置参数
+ */
+cpufreq_dbs_governor_init
+	// 该governor指的是dbs_governor
+	struct dbs_governor *gov = dbs_governor_of(policy);
+	// check 如果dbs_data信息已经存在，则over
+	dbs_data = gov->gdbs_data;
+	if (dbs_data)
+		goto out;
+	// 下面讨论新建一个的情况
+	dbs_data = kzalloc(sizeof(*dbs_data), GFP_KERNEL);
+	/* 利用container_of，将调用dbs_governor->init(od_init)
+	 * 具体的dbs_governor填充不同的参数
+	 */
+	gov->init(dbs_data);
+	// set sampling_rate
+	dbs_data->sampling_rate = max(dbs_data->min_sampling_rate,
+				      LATENCY_MULTIPLIER * latency);
+	// set
+	gov->gdbs_data = dbs_data;
+	policy_dbs->dbs_data = dbs_data;
+	policy->governor_data = policy_dbs;
+
+/*
+ * cpu负载率有变化时将call dbs_update_util_handler
+ * 最终回调dbs_governor->gov_dbs_update
+ */
+cpufreq_dbs_governor_start
+	sampling_rate = dbs_data->sampling_rate;
+	gov_set_update_util(policy_dbs, sampling_rate);
+		/*
+		 * cpu负载率有变化时 将call dbs_update_util_handler
+		 */
+		cpufreq_add_update_util_hook(cpu, &cdbs->update_util, dbs_update_util_handler);
+			// 没有到下一个采样时间，return
+			if ((s64)delta_ns < policy_dbs->sample_delay_ns)
+				return;
+			irq_work_queue(&policy_dbs->irq_work);
+				schedule_work_on(smp_processor_id(), &policy_dbs->work);
+					// 执行gov->gov_dbs_update(policy), 如od_dbs_update
+					gov_update_sample_delay(policy_dbs, gov->gov_dbs_update(policy));
+
