@@ -3,10 +3,10 @@
  */
 
 /*
- * chip->options的来源
- * 默认是0, 在s3c2410.c中设置为NAND_SKIP_BBTSCAN
+ * chip->options两部分决定：
+	在machine端设置是0, 在s3c2410.c中设置为NAND_SKIP_BBTSCAN
  */
-// 设置端 machine code: Mach-mini2440.c (linux-4.13.1\arch\arm\mach-s3c24xx)
+// machine code: Mach-mini2440.c (linux-4.13.1\arch\arm\mach-s3c24xx)
 static struct s3c2410_nand_set mini2440_nand_sets[] __initdata = {
 	[0] = {
 		.options = 0,	// 因为options在mini2440_nand_sets没有设置，所以是0
@@ -18,8 +18,7 @@ static struct s3c2410_platform_nand mini2440_nand_info __initdata = {
 s3c_nand_set_platdata(&mini2440_nand_info);
 	s3c_set_platdata(nand, sizeof(struct s3c2410_platform_nand), &s3c_device_nand);
 		pdev->dev.platform_data = npd;	// s3c_device_nand.dev.platform_data = &mini2440_nand_info;
-
-// 使用端 nand controller code: S3c2410.c (linux-4.13.1\drivers\mtd\nand)
+// nand controller code: S3c2410.c (linux-4.13.1\drivers\mtd\nand)
 s3c24xx_nand_probe(struct platform_device *pdev)
 	plat = to_nand_plat(pdev);
 		return dev->platform_data;
@@ -58,8 +57,12 @@ s3c24xx_nand_probe
 			 * mini2440_nand_info.ecc_mode = NAND_ECC_SOFT
 			 */
 			chip->ecc.mode = info->platform->ecc_mode;	// NAND_ECC_SOFT
-	
-	// nand框架接口函数
+	/*
+	 * nand_scan拆分为两个part
+	 * part 1: nand_scan_ident
+	 * part 2: nand_scan_tail
+	 */
+	// part 1: 发0x90读id命令，和Nand_ids.c进行match，获得pagesize/blocksize/oob size...
 	nand_scan_ident(mtd, (sets) ? sets->nr_chips : 1, NULL);	// 传入mtd和table，如传入的时NULL，则使用默认表 nand_flash_ids
 		// nand controller没有填充的配置上default
 		nand_set_defaults(chip);
@@ -140,7 +143,7 @@ s3c24xx_nand_probe
 			chip->ecc.algo = NAND_ECC_HAMMING;
 			break;
 	
-	// nand框架接口函数
+	// part 2: 主要是为了建立bbt
 	nand_scan_tail(mtd);
 		// 设置ecc相关
 		case NAND_ECC_SOFT:

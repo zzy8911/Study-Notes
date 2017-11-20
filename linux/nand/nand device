@@ -1,10 +1,10 @@
 /*
- * nand device
- * linux-4.13.1\drivers\mtd\nand\Nand_samsung.c: 描述各个vender的具体某款nand device
+ * linux-4.13.1\drivers\mtd\nand\Nand_samsung.c: 
+ 	此类文件描述各个manufacturer的detect方法(获得pagesize...参数)。同一个manufacturer，detect方法相同
  */
 
 /*
- * 根据read id得回的第一个参数(制造商id)来使用不同的detect函数来确定板上nand的参数
+ * 根据read id得回的第一个数据(制造商id)来确定板上nand的参数
  * writesize/oobsize/erasesize/buswidth
  */
 samsung_nand_decode_id(struct nand_chip *chip)
@@ -43,5 +43,3 @@ nand_get_manufacturer(u8 id)
 	for (i = 0; i < ARRAY_SIZE(nand_manufacturers); i++)
 		if (nand_manufacturers[i].id == id)
 			return &nand_manufacturers[i];
-
-
