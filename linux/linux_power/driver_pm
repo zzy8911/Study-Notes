@@ -1,0 +1,48 @@
+/*
+ * main.c
+ * platform.c
+ * 各个驱动.c
+ * 最终都会调用到各个driver的suspend/resume函数
+ * 如platform_device
+ *	platform_driver->driver->pm->suspend/platform_driver->suspend(legacy)
+ */ 
+
+int platform_pm_suspend(struct device *dev)
+{
+	if (drv->pm->suspend)
+		// dev_pm_ops: 调用platform_driver->driver->pm->suspend()
+		drv->pm->suspend(dev);
+	else
+		// legacy: 调用platform_driver->suspend()
+		platform_legacy_suspend(dev, PMSG_SUSPEND);
+			pdrv->suspend(pdev, mesg);
+}
+#define USE_PLATFORM_PM_SLEEP_OPS \
+	.suspend = platform_pm_suspend, \
+	.resume = platform_pm_resume,
+static const struct dev_pm_ops platform_dev_pm_ops = {
+	.runtime_suspend = pm_generic_runtime_suspend,
+	.runtime_resume = pm_generic_runtime_resume,
+	USE_PLATFORM_PM_SLEEP_OPS
+};
+struct bus_type platform_bus_type = {
+	.pm	= &platform_dev_pm_ops,
+};
+platform_device_register(&platform_device);
+	platform_device_add(pdev);
+		pdev->dev.bus = &platform_bus_type;
+
+
+// suspend流程
+dpm_suspend_start
+	dpm_prepare(state);
+	dpm_suspend(state);	
+		device_suspend(dev);
+			__device_suspend(dev, pm_transition, false);
+				// case dev->bus
+				callback = pm_op(dev->bus->pm, state);
+				/*
+				 * platform devices作为例子：则调用platform_pm_suspend
+				 * 	如果有platform_driver->driver->pm->suspend，则调用
+				 * 	没有则调用platform_driver->suspend
+				 */

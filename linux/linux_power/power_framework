@@ -1,0 +1,9 @@
+// 框架分析
+1: kernel/power/
+	main.c:	/sys/power/下注册了各个接口
+	suspend.c: /sys/power/state的具体实现，涉及平台(pm.c)/各个驱动(driver->pm->dev_pm_ops)/wakeup events framework(wakeup.c)
+	autosleep.c: /sys/power/autosleep的具体实现，涉及suspend.c/wakeup.c
+
+2: drivers/base/power/
+	wakeup.c: wakeup events framework, 主要实现了suspend过程中的同步机制
+	runtime.c: RPM
